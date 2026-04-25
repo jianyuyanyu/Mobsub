@@ -1,4 +1,5 @@
 ﻿using Mobsub.Ikkoku.CommandLine;
+using Mobsub.SubtitleProcess;
 using System.CommandLine;
 
 namespace Mobsub.Ikkoku;
@@ -24,9 +25,13 @@ partial class Program
                     switch (p)
                     {
                         case FileInfo f:
-                            if (!(f.Name.EndsWith(".ass") || f.Name.EndsWith(".txt") || f.Name.EndsWith(".sup")))
+                            var ext = f.Extension;
+                            if (!(ext.Equals(".ass", StringComparison.OrdinalIgnoreCase)
+                                  || ext.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+                                  || ext.Equals(".sup", StringComparison.OrdinalIgnoreCase)
+                                  || ImageSubtitleOcr.IsSupportedImageExtension(ext)))
                             {
-                                result.AddError("You should input .ass, .txt or .sup file or a directory.");
+                                result.AddError("You should input .ass, .txt, .sup, image file or a directory.");
                             }
                             break;
                     }

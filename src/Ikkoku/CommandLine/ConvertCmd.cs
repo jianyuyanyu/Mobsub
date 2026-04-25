@@ -9,11 +9,11 @@ internal class ConvertCmd
 {
     internal static Command Build(Argument<FileSystemInfo> path, Option<FileSystemInfo> optPath)
     {
-        var inputSuffix = new Option<string>("--from-format") { Description = "Format which will convert from" };
+        var inputSuffix = new Option<string>("--from-format") { Description = "Format which will convert from. Use image/.image for all supported image files in a directory." };
         var convertSuffix = new Option<string>("--to-format") { Description = "Format which will convert to", Required = true };
         var imageBinarizeThreshold = new Option<byte?>("--image-binarize-threshold")
         {
-            Description = "Image Binarize Threshold when input is .sup, range is 0-255, 0 is disabled. Default: 0 (convert to .bmp) / 128 (convert to .txt)",
+            Description = "Image Binarize Threshold when input is .sup or image, range is 0-255, 0 is disabled. Default: 0 (convert to .bmp) / 128 (convert to .txt)",
             DefaultValueFactory = _ => null
         };
 
@@ -54,10 +54,39 @@ internal class ConvertCmd
                 ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
                 break;
             case DirectoryInfo d:
-                var files = Utils.Traversal(d, inputSuffix);
-                foreach (var f in files)
+                if (!convertSuffix.Equals(".txt", StringComparison.OrdinalIgnoreCase))
                 {
-                    ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
+                    foreach (var f in Utils.Traversal(d, inputSuffix))
+                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
+                    break;
+                }
+
+                imageBinarizeThreshold ??= 128;
+
+                if (ImageSubtitleOcr.IsSupportedImageExtension(inputSuffix))
+                {
+                    var imageFiles = ImageSubtitleOcr.GetImageFiles(d, inputSuffix);
+                    var optFile = ResolveOutputFileForDir(d, optPath, ".txt");
+                    using var ocr = new ImageSubtitleOcr();
+                    ocr.OcrImages(imageFiles, optFile.FullName, (byte)imageBinarizeThreshold);
+                    break;
+                }
+
+                var files = Utils.Traversal(d, inputSuffix);
+
+                if (inputSuffix.Equals(".sup", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var ocr = new ImageSubtitleOcr();
+                    foreach (var f in files)
+                    {
+                        var optFile = ResolveOutputFile(f, optPath, ".txt");
+                        ocr.OcrPgsSup(f.FullName, optFile.FullName, (byte)imageBinarizeThreshold);
+                    }
+                }
+                else
+                {
+                    foreach (var f in files)
+                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
                 }
                 break;
         }
@@ -65,44 +94,39 @@ internal class ConvertCmd
 
     internal static void ConvertSubtitle(FileInfo fromFile, FileSystemInfo? optPath, string convertSuffix, byte? imageBinarizeThreshold)
     {
-        if (fromFile.Extension == convertSuffix)
-        {
+        if (fromFile.Extension.Equals(convertSuffix, StringComparison.OrdinalIgnoreCase))
             throw new Exception($"{convertSuffix} can’t same as {fromFile.Extension}");
-        }
 
-        DirectoryInfo optDir = fromFile.Directory!;
-        switch (optPath)
+        if (ImageSubtitleOcr.IsSupportedImageExtension(fromFile.Extension))
         {
-            case DirectoryInfo d:
-                optDir = d;
-                break;
-            case FileInfo f:
-                optDir = f.Directory!;
-                break;
-            default:
-                break;
+            imageBinarizeThreshold ??= 128;
+            var optFile = ResolveOutputFile(fromFile, optPath, ".txt");
+            using var ocr = new ImageSubtitleOcr();
+            ocr.OcrImage(fromFile.FullName, optFile.FullName, (byte)imageBinarizeThreshold);
+            return;
         }
 
-        switch (fromFile.Extension)
+        switch (fromFile.Extension.ToLowerInvariant())
         {
             case ".ass":
                 var ass = new AssData();
                 ass.ReadAssFile(fromFile.FullName);
-
                 switch (convertSuffix)
                 {
                     case ".txt":
-                        var optFile = Utils.ChangeSuffix(fromFile, optDir, convertSuffix);
-                        var fs = new FileStream(optFile.FullName, FileMode.Create, FileAccess.Write);
-                        using (var memStream = new MemoryStream())
                         {
-                            using var sw = new StreamWriter(memStream, Mobsub.SubtitleParse.Utils.EncodingRefOS());
-                            ConvertSub.ConvertAssToTxt(sw, ass);
-                            sw.Flush();
-                            memStream.Seek(0, SeekOrigin.Begin);
-                            memStream.CopyTo(fs);
+                            var optFile = ResolveOutputFile(fromFile, optPath, convertSuffix);
+                            using var fs = new FileStream(optFile.FullName, FileMode.Create, FileAccess.Write);
+                            using (var memStream = new MemoryStream())
+                            {
+                                using var sw = new StreamWriter(memStream, Mobsub.SubtitleParse.Utils.EncodingRefOS());
+                                ConvertSub.ConvertAssToTxt(sw, ass);
+                                sw.Flush();
+                                memStream.Seek(0, SeekOrigin.Begin);
+                                memStream.CopyTo(fs);
+                            }
+                            break;
                         }
-                        break;
                     default:
                         throw new NotImplementedException($"Unsupported: {fromFile.Extension} convert to {convertSuffix}.");
                 }
@@ -112,13 +136,17 @@ internal class ConvertCmd
                 {
                     case ".bmp":
                         imageBinarizeThreshold ??= 0;
+                        var optDir = ResolveOutputDirectory(fromFile, optPath);
                         PGSData.DecodeImages(fromFile.FullName, optDir.FullName, (byte)imageBinarizeThreshold);
                         break;
                     case ".txt":
-                        imageBinarizeThreshold ??= 128;
-                        var optFile = Utils.ChangeSuffix(fromFile, optDir, convertSuffix);
-                        ConvertImageSubtitle.OcrPgsSup(fromFile.FullName, optFile.FullName, (byte)imageBinarizeThreshold);
-                        break;
+                        {
+                            imageBinarizeThreshold ??= 128;
+                            var optSupFile = ResolveOutputFile(fromFile, optPath, convertSuffix);
+                            using var ocr = new ImageSubtitleOcr();
+                            ocr.OcrPgsSup(fromFile.FullName, optSupFile.FullName, (byte)imageBinarizeThreshold);
+                            break;
+                        }
                     default:
                         throw new NotImplementedException($"Unsupported: {fromFile.Extension} convert to {convertSuffix}.");
                 }
@@ -126,5 +154,28 @@ internal class ConvertCmd
             default:
                 throw new NotImplementedException($"Unsupported: {fromFile.Extension}.");
         }
+    }
+
+    private static FileInfo ResolveOutputFile(FileInfo fromFile, FileSystemInfo? optPath, string convertSuffix)
+        => Utils.ChangeSuffix(fromFile, ResolveOutputDirectory(fromFile, optPath), convertSuffix);
+
+    private static DirectoryInfo ResolveOutputDirectory(FileInfo fromFile, FileSystemInfo? optPath)
+    {
+        return optPath switch
+        {
+            DirectoryInfo d => d,
+            FileInfo f => f.Directory!,
+            _ => fromFile.Directory!,
+        };
+    }
+
+    private static FileInfo ResolveOutputFileForDir(DirectoryInfo fromDir, FileSystemInfo? optPath, string convertSuffix)
+    {
+        return optPath switch
+        {
+            FileInfo f => f,
+            DirectoryInfo d => new FileInfo(Path.Combine(d.FullName, fromDir.Name + convertSuffix)),
+            _ => new FileInfo(Path.Combine(fromDir.FullName, fromDir.Name + convertSuffix)),
+        };
     }
 }
