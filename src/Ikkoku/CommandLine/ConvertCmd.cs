@@ -5,7 +5,7 @@ using System.CommandLine;
 
 namespace Mobsub.Ikkoku.CommandLine;
 
-internal class ConvertCmd
+internal partial class ConvertCmd
 {
     internal static Command Build(Argument<FileSystemInfo> path, Option<FileSystemInfo> optPath)
     {
@@ -32,32 +32,44 @@ internal class ConvertCmd
             path, optPath, convertSuffix, inputSuffix, imageBinarizeThreshold
         };
 
+        var ocrOptions = new OcrCommandOptions();
+        AddOptionalOcrOptions(convSubtitleCommand, ocrOptions);
+
         convSubtitleCommand.SetAction(result =>
         {
+            ApplyOptionalOcrEngine(result, ocrOptions);
             Execute(
                 result.GetValue(path)!,
                 result.GetValue(optPath),
                 result.GetValue(convertSuffix)!,
                 result.GetValue(inputSuffix)!,
-                result.GetValue(imageBinarizeThreshold)
-                );
+                result.GetValue(imageBinarizeThreshold),
+                ocrOptions.SelectedEngine,
+                ocrOptions.RecognitionMode);
         });
 
         return convSubtitleCommand;
     }
 
-    internal static void Execute(FileSystemInfo path, FileSystemInfo? optPath, string convertSuffix, string inputSuffix, byte? imageBinarizeThreshold)
+    internal static void Execute(
+        FileSystemInfo path,
+        FileSystemInfo? optPath,
+        string convertSuffix,
+        string inputSuffix,
+        byte? imageBinarizeThreshold,
+        ImageSubtitleOcrEngine ocrEngine = ImageSubtitleOcrEngine.OneOcr,
+        ImageSubtitleOcrRecognitionMode recognitionMode = ImageSubtitleOcrRecognitionMode.Auto)
     {
         switch (path)
         {
             case FileInfo f:
-                ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
+                ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold, ocrEngine, recognitionMode);
                 break;
             case DirectoryInfo d:
                 if (!convertSuffix.Equals(".txt", StringComparison.OrdinalIgnoreCase))
                 {
                     foreach (var f in Utils.Traversal(d, inputSuffix))
-                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
+                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold, ocrEngine, recognitionMode);
                     break;
                 }
 
@@ -67,7 +79,7 @@ internal class ConvertCmd
                 {
                     var imageFiles = ImageSubtitleOcr.GetImageFiles(d, inputSuffix);
                     var optFile = ResolveOutputFileForDir(d, optPath, ".txt");
-                    using var ocr = new ImageSubtitleOcr();
+                    using var ocr = new ImageSubtitleOcr(ocrEngine, recognitionMode);
                     ocr.OcrImages(imageFiles, optFile.FullName, (byte)imageBinarizeThreshold);
                     break;
                 }
@@ -76,7 +88,7 @@ internal class ConvertCmd
 
                 if (inputSuffix.Equals(".sup", StringComparison.OrdinalIgnoreCase))
                 {
-                    using var ocr = new ImageSubtitleOcr();
+                    using var ocr = new ImageSubtitleOcr(ocrEngine, recognitionMode);
                     foreach (var f in files)
                     {
                         var optFile = ResolveOutputFile(f, optPath, ".txt");
@@ -86,13 +98,19 @@ internal class ConvertCmd
                 else
                 {
                     foreach (var f in files)
-                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold);
+                        ConvertSubtitle(f, optPath, convertSuffix, imageBinarizeThreshold, ocrEngine, recognitionMode);
                 }
                 break;
         }
     }
 
-    internal static void ConvertSubtitle(FileInfo fromFile, FileSystemInfo? optPath, string convertSuffix, byte? imageBinarizeThreshold)
+    internal static void ConvertSubtitle(
+        FileInfo fromFile,
+        FileSystemInfo? optPath,
+        string convertSuffix,
+        byte? imageBinarizeThreshold,
+        ImageSubtitleOcrEngine ocrEngine = ImageSubtitleOcrEngine.OneOcr,
+        ImageSubtitleOcrRecognitionMode recognitionMode = ImageSubtitleOcrRecognitionMode.Auto)
     {
         if (fromFile.Extension.Equals(convertSuffix, StringComparison.OrdinalIgnoreCase))
             throw new Exception($"{convertSuffix} can’t same as {fromFile.Extension}");
@@ -101,7 +119,7 @@ internal class ConvertCmd
         {
             imageBinarizeThreshold ??= 128;
             var optFile = ResolveOutputFile(fromFile, optPath, ".txt");
-            using var ocr = new ImageSubtitleOcr();
+            using var ocr = new ImageSubtitleOcr(ocrEngine, recognitionMode);
             ocr.OcrImage(fromFile.FullName, optFile.FullName, (byte)imageBinarizeThreshold);
             return;
         }
@@ -143,7 +161,7 @@ internal class ConvertCmd
                         {
                             imageBinarizeThreshold ??= 128;
                             var optSupFile = ResolveOutputFile(fromFile, optPath, convertSuffix);
-                            using var ocr = new ImageSubtitleOcr();
+                            using var ocr = new ImageSubtitleOcr(ocrEngine, recognitionMode);
                             ocr.OcrPgsSup(fromFile.FullName, optSupFile.FullName, (byte)imageBinarizeThreshold);
                             break;
                         }
@@ -157,7 +175,7 @@ internal class ConvertCmd
     }
 
     private static FileInfo ResolveOutputFile(FileInfo fromFile, FileSystemInfo? optPath, string convertSuffix)
-        => Utils.ChangeSuffix(fromFile, ResolveOutputDirectory(fromFile, optPath), convertSuffix);
+        => optPath is FileInfo f ? f : Utils.ChangeSuffix(fromFile, ResolveOutputDirectory(fromFile, optPath), convertSuffix);
 
     private static DirectoryInfo ResolveOutputDirectory(FileInfo fromFile, FileSystemInfo? optPath)
     {
@@ -178,4 +196,19 @@ internal class ConvertCmd
             _ => new FileInfo(Path.Combine(fromDir.FullName, fromDir.Name + convertSuffix)),
         };
     }
+
+    private sealed class OcrCommandOptions
+    {
+        public ImageSubtitleOcrEngine SelectedEngine { get; set; } = ImageSubtitleOcrEngine.OneOcr;
+
+        public ImageSubtitleOcrRecognitionMode RecognitionMode { get; set; } = ImageSubtitleOcrRecognitionMode.Auto;
+
+        public Option<string>? OcrEngine { get; set; }
+
+        public Option<string>? OneOcrSharpRecognitionMode { get; set; }
+    }
+
+    static partial void AddOptionalOcrOptions(Command command, OcrCommandOptions options);
+
+    static partial void ApplyOptionalOcrEngine(ParseResult result, OcrCommandOptions options);
 }

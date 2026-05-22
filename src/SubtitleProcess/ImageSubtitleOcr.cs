@@ -9,7 +9,19 @@ using System.Text.RegularExpressions;
 
 namespace Mobsub.SubtitleProcess;
 
-public sealed class ImageSubtitleOcr : IDisposable
+public enum ImageSubtitleOcrEngine
+{
+    OneOcr,
+    OneOcrSharp,
+}
+
+public enum ImageSubtitleOcrRecognitionMode
+{
+    Auto,
+    Cjk,
+}
+
+public sealed partial class ImageSubtitleOcr : IDisposable
 {
     private static readonly HashSet<string> SupportedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -18,17 +30,35 @@ public sealed class ImageSubtitleOcr : IDisposable
 
     private static readonly Regex NaturalSortRegex = new(@"\d+", RegexOptions.Compiled);
 
-    private readonly Ocr ocrEngine;
+    private readonly ImageSubtitleOcrEngine ocrEngineType;
+    private readonly ImageSubtitleOcrRecognitionMode recognitionMode;
+    private readonly Ocr? oneOcrEngine;
 
-    public ImageSubtitleOcr()
+    public ImageSubtitleOcr(
+        ImageSubtitleOcrEngine ocrEngine = ImageSubtitleOcrEngine.OneOcr,
+        ImageSubtitleOcrRecognitionMode recognitionMode = ImageSubtitleOcrRecognitionMode.Cjk)
     {
-        ocrEngine = new Ocr();
-        ocrEngine.CreatePipelineAndProcessOptions();
+        ocrEngineType = ocrEngine;
+        this.recognitionMode = recognitionMode;
+        switch (ocrEngine)
+        {
+            case ImageSubtitleOcrEngine.OneOcr:
+                oneOcrEngine = new Ocr();
+                oneOcrEngine.CreatePipelineAndProcessOptions();
+                break;
+            default:
+                var handled = false;
+                InitializeOptionalOcrEngine(ocrEngine, ref handled);
+                if (!handled)
+                    throw new NotSupportedException($"OCR engine {ocrEngine} is not available in this build.");
+                break;
+        }
     }
 
     public void Dispose()
     {
-        ocrEngine.Dispose();
+        oneOcrEngine?.Dispose();
+        DisposeOptionalOcrEngine();
     }
 
     public static bool IsSupportedImageExtension(string extension) => SupportedImageExtensions.Contains(extension);
@@ -62,8 +92,21 @@ public sealed class ImageSubtitleOcr : IDisposable
 
     public void OcrImage(string imageFile, TextWriter writer, byte imageBinarizeThreshold)
     {
-        using var bitmap = LoadImage(imageFile, imageBinarizeThreshold);
-        OcrBitmap(bitmap, writer);
+        switch (ocrEngineType)
+        {
+            case ImageSubtitleOcrEngine.OneOcr:
+                using (var bitmap = LoadSimpleBitmap(imageFile, imageBinarizeThreshold))
+                {
+                    OcrBitmap(bitmap, writer);
+                }
+                break;
+            default:
+                var handled = false;
+                OcrOptionalImage(imageFile, writer, imageBinarizeThreshold, ref handled);
+                if (!handled)
+                    throw new NotSupportedException($"OCR engine {ocrEngineType} is not available in this build.");
+                break;
+        }
     }
 
     public void OcrImages(IEnumerable<FileInfo> imageFiles, string outputFile, byte imageBinarizeThreshold)
@@ -82,7 +125,7 @@ public sealed class ImageSubtitleOcr : IDisposable
         return new StreamWriter(outputFile, false, Encoding.UTF8, 1 << 16);
     }
 
-    private static SimpleBitmap LoadImage(string imageFile, byte imageBinarizeThreshold)
+    private static SimpleBitmap LoadSimpleBitmap(string imageFile, byte imageBinarizeThreshold)
     {
         using var image = Image.Load<Bgra32>(imageFile);
         var bitmap = new SimpleBitmap(image.Width, image.Height);
@@ -102,7 +145,23 @@ public sealed class ImageSubtitleOcr : IDisposable
 
     private void OcrBitmap(SimpleBitmap pic, TextWriter writer)
     {
-        var newPic = ProcessImage(pic);
+        switch (ocrEngineType)
+        {
+            case ImageSubtitleOcrEngine.OneOcr:
+                OcrOneOcrBitmap(pic, writer);
+                break;
+            default:
+                var handled = false;
+                OcrOptionalBitmap(pic, writer, ref handled);
+                if (!handled)
+                    throw new NotSupportedException($"OCR engine {ocrEngineType} is not available in this build.");
+                break;
+        }
+    }
+
+    private void OcrOneOcrBitmap(SimpleBitmap pic, TextWriter writer)
+    {
+        var newPic = ProcessSimpleBitmap(pic);
         try
         {
             unsafe
@@ -119,7 +178,7 @@ public sealed class ImageSubtitleOcr : IDisposable
                         data_ptr = (IntPtr)p
                     };
 
-                    WriteOcrResult(ocrEngine.RunOcr(img), writer);
+                    WriteOneOcrResult(oneOcrEngine!.RunOcr(img), writer);
                 }
             }
         }
@@ -130,7 +189,7 @@ public sealed class ImageSubtitleOcr : IDisposable
         }
     }
 
-    private static void WriteOcrResult(Line[]? result, TextWriter writer)
+    private static void WriteOneOcrResult(Line[]? result, TextWriter writer)
     {
         if (result is null || result.Length == 0) return;
         if (result.Length == 1)
@@ -156,11 +215,19 @@ public sealed class ImageSubtitleOcr : IDisposable
             writer.WriteLine();
     }
 
-    private static SimpleBitmap ProcessImage(SimpleBitmap pic)
+    private static SimpleBitmap ProcessSimpleBitmap(SimpleBitmap pic)
     {
         if (pic.GetWidth() >= 50 && pic.GetHeight() >= 50) return pic;
 
         var scale = pic.GetWidth() >= 25 && pic.GetHeight() >= 25 ? 2 : 4;
         return pic.ResizeNearest(scale);
     }
+
+    partial void InitializeOptionalOcrEngine(ImageSubtitleOcrEngine ocrEngine, ref bool handled);
+
+    partial void DisposeOptionalOcrEngine();
+
+    partial void OcrOptionalImage(string imageFile, TextWriter writer, byte imageBinarizeThreshold, ref bool handled);
+
+    partial void OcrOptionalBitmap(SimpleBitmap bitmap, TextWriter writer, ref bool handled);
 }

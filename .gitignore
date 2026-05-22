@@ -18,3 +18,4 @@ debug.log
 
 src/SubtitleParse/AssEditExp/
 **/*.csproj.lscache
+NuGet.config

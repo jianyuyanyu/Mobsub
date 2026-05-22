@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseOneOcrSharpOnnx Condition="'$(UseOneOcrSharpOnnx)' == ''">false</UseOneOcrSharpOnnx>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,11 +17,16 @@
   <ItemGroup>
     <PackageReference Include="AC.SnippingToolOcrCore" Version="1.0.3" />
     <PackageReference Include="LibGit2Sharp.NativeBinaries" Version="2.0.323" />
+    <PackageReference Include="OneOcrSharp.Onnx" Version="0.1.0" Condition="'$(UseOneOcrSharpOnnx)' == 'true'" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="System.IO.Packaging" Version="8.0.1" />
     <PackageReference Include="Vecc.YamlDotNet.Analyzers.StaticGenerator" Version="16.3.0" />
     <PackageReference Include="XenoAtom.Interop.libgit2" Version="1.0.0" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseOneOcrSharpOnnx)' != 'true'">
+    <Compile Remove="ImageSubtitleOcr.OneOcrSharp.cs" />
   </ItemGroup>
 
 </Project>
