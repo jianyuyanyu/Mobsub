@@ -9,14 +9,14 @@ internal partial class ConvertCmd
     {
         var ocrEngine = new Option<string>("--ocr-engine")
         {
-            Description = "OCR engine for .sup and image to .txt. Values: oneocr, oneocrsharp.",
+            Description = "OCR engine for .sup and image to .txt. Values: oneocr, oneocrsharp, meikiocr.",
             DefaultValueFactory = _ => "oneocr"
         };
         ocrEngine.Validators.Add(result =>
         {
             var engine = result.GetValue(ocrEngine);
             if (!IsValidOcrEngine(engine))
-                result.AddError("You should specify --ocr-engine as oneocr or oneocrsharp.");
+                result.AddError("You should specify --ocr-engine as oneocr, oneocrsharp, or meikiocr.");
         });
 
         var recognitionMode = new Option<string>("--oneocrsharp-recognition-mode")
@@ -47,7 +47,8 @@ internal partial class ConvertCmd
     private static bool IsValidOcrEngine(string? value)
         => value is null ||
            value.Equals("oneocr", StringComparison.OrdinalIgnoreCase) ||
-           value.Equals("oneocrsharp", StringComparison.OrdinalIgnoreCase);
+           value.Equals("oneocrsharp", StringComparison.OrdinalIgnoreCase) ||
+           value.Equals("meikiocr", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsValidRecognitionMode(string? value)
         => value is null ||
@@ -61,6 +62,9 @@ internal partial class ConvertCmd
 
         if (value.Equals("oneocrsharp", StringComparison.OrdinalIgnoreCase))
             return ImageSubtitleOcrEngine.OneOcrSharp;
+
+        if (value.Equals("meikiocr", StringComparison.OrdinalIgnoreCase))
+            return ImageSubtitleOcrEngine.MeikiOcr;
 
         throw new ArgumentException($"Unsupported OCR engine: {value}", nameof(value));
     }

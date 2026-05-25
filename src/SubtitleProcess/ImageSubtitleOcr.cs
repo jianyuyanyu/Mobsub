@@ -13,6 +13,7 @@ public enum ImageSubtitleOcrEngine
 {
     OneOcr,
     OneOcrSharp,
+    MeikiOcr,
 }
 
 public enum ImageSubtitleOcrRecognitionMode

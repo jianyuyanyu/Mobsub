@@ -7,6 +7,7 @@
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseOneOcrSharpOnnx Condition="'$(UseOneOcrSharpOnnx)' == ''">false</UseOneOcrSharpOnnx>
+    <DefineConstants Condition="'$(UseOneOcrSharpOnnx)' == 'true'">$(DefineConstants);USE_ONEOCR_SHARP</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +18,7 @@
   <ItemGroup>
     <PackageReference Include="AC.SnippingToolOcrCore" Version="1.0.3" />
     <PackageReference Include="LibGit2Sharp.NativeBinaries" Version="2.0.323" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.26.0" />
     <PackageReference Include="OneOcrSharp.Onnx" Version="0.1.0" Condition="'$(UseOneOcrSharpOnnx)' == 'true'" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="System.IO.Packaging" Version="8.0.1" />

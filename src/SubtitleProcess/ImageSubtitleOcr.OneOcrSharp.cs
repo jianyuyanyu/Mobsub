@@ -10,11 +10,8 @@ public sealed partial class ImageSubtitleOcr
 {
     private OneOcrOnnxPipeline? oneOcrSharpPipeline;
 
-    partial void InitializeOptionalOcrEngine(ImageSubtitleOcrEngine ocrEngine, ref bool handled)
+    private void InitializeOneOcrSharpEngine(ImageSubtitleOcrEngine ocrEngine, ref bool handled)
     {
-        if (ocrEngine != ImageSubtitleOcrEngine.OneOcrSharp)
-            return;
-
         oneOcrSharpPipeline = new OneOcrOnnxPipeline(new OneOcrOnnxPipelineOptions
         {
             RecognitionMode = ToOneOcrRecognitionMode(recognitionMode),
@@ -23,26 +20,20 @@ public sealed partial class ImageSubtitleOcr
         handled = true;
     }
 
-    partial void DisposeOptionalOcrEngine()
+    private void DisposeOneOcrSharpEngine()
     {
         oneOcrSharpPipeline?.Dispose();
     }
 
-    partial void OcrOptionalImage(string imageFile, TextWriter writer, byte imageBinarizeThreshold, ref bool handled)
+    private void OcrOneOcrSharpImageFile(string imageFile, TextWriter writer, byte imageBinarizeThreshold, ref bool handled)
     {
-        if (ocrEngineType != ImageSubtitleOcrEngine.OneOcrSharp)
-            return;
-
         using var image = LoadImage(imageFile, imageBinarizeThreshold);
         OcrOneOcrSharpImage(image, writer);
         handled = true;
     }
 
-    partial void OcrOptionalBitmap(SimpleBitmap bitmap, TextWriter writer, ref bool handled)
+    private void OcrOneOcrSharpBitmap(SimpleBitmap bitmap, TextWriter writer, ref bool handled)
     {
-        if (ocrEngineType != ImageSubtitleOcrEngine.OneOcrSharp)
-            return;
-
         using var image = ToImage(bitmap);
         OcrOneOcrSharpImage(image, writer);
         handled = true;
